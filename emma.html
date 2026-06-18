@@ -1140,13 +1140,15 @@ function dismissIntro() {
    state — tutorialStep just gates which message shows. */
 let tutorialActive = false;
 let tutorialStep = 0;
+// Each step's `milestone` is the action that COMPLETES it (the event that
+// advances to the next tip). The final step is terminal (milestone null).
 const TUTORIAL_STEPS = [
-  { milestone: "start",  text: "👋 Welcome! Walk to the customer at the door (WASD or click) and press E to greet them." },
-  { milestone: "greet",  text: "Now lead them to a glowing table and press E to seat them. They'll order something." },
-  { milestone: "seat",   text: "Read the order (top-left). Walk to the 🧺 Pantry and press E to grab the exact ingredients." },
-  { milestone: "pantry", text: "Take them to the 🔪 Prep station and press E — nail the quick minigame!" },
-  { milestone: "prep",   text: "Baked items go in the 🔥 Oven (press E). Grab them the moment they're ready — don't let them burn!" },
-  { milestone: "serve",  text: "🎉 You served your first order! Earn tips, then spend them in the 🛒 Upgrade Shop between days. You've got this, chef!" }
+  { milestone: "greet",  text: "👋 Welcome! Walk to the customer at the door (WASD or click) and press E to greet them." },
+  { milestone: "seat",   text: "Now lead them to a glowing table and press E to seat them. They'll order something." },
+  { milestone: "pantry", text: "Read the order (top-left). Walk to the 🧺 Pantry and press E to grab the exact ingredients." },
+  { milestone: "prep",   text: "Take them to the 🔪 Prep station and press E — nail the quick minigame!" },
+  { milestone: "serve",  text: "Baked items go in the 🔥 Oven (press E). Grab them the moment they're ready, then serve the table — don't let it burn!" },
+  { milestone: null,     text: "🎉 You served your first order! Earn tips, then spend them in the 🛒 Upgrade Shop between days. You've got this, chef!" }
 ];
 function startTutorial() {
   tutorialActive = true;
@@ -1161,19 +1163,22 @@ function showTutorialStep() {
   document.getElementById("coachText").textContent = s.text;
   coach.style.display = "block";
 }
-// Called from game events; advances the coach only if the milestone matches the next step.
+// Called from game events; advances the coach only if the milestone matches
+// the current step. The current step's milestone is the action that finishes it.
 function tutorialAdvance(milestone) {
   if (!tutorialActive) return;
-  const next = TUTORIAL_STEPS[tutorialStep];
-  if (next && next.milestone === milestone) {
+  const current = TUTORIAL_STEPS[tutorialStep];
+  if (current && current.milestone === milestone) {
     tutorialStep++;
-    if (tutorialStep >= TUTORIAL_STEPS.length) finishTutorial();
-    else showTutorialStep();
+    showTutorialStep();
+    // If we've just landed on the terminal (milestone-less) step, it's the
+    // celebration — show it, then auto-dismiss after a beat.
+    const landed = TUTORIAL_STEPS[tutorialStep];
+    if (!landed || landed.milestone == null) finishTutorial();
   }
 }
 function finishTutorial() {
-  // keep the final "you did it" message up briefly, then dismiss for good
-  showTutorialStep();
+  // the final "you did it" message is already on screen — keep it briefly, then dismiss for good
   tutorialActive = false;
   seenTutorial = true;
   saveGame();

@@ -484,10 +484,6 @@ const obstacleColliders = [
   { pos: stationPositions.trash, radius: 1.2 },
   ...tables.map(t => ({ pos: t.pos, radius: 1.4 }))
 ];
-const wallSegments = [
-  { x0: -11, x1: -3.5, z: -1, halfDepth: 0.2 },
-  { x0: 3.5, x1: 11, z: -1, halfDepth: 0.2 }
-];
 const playerRadius = 0.45;
 function isObstructed(x, z) {
   for (const obs of obstacleColliders) {
@@ -495,12 +491,6 @@ function isObstructed(x, z) {
     const dz = z - obs.pos.z;
     const minDist = obs.radius + playerRadius;
     if (dx * dx + dz * dz < minDist * minDist) return true;
-  }
-  for (const wall of wallSegments) {
-    if (x >= wall.x0 - playerRadius && x <= wall.x1 + playerRadius &&
-        z >= wall.z - wall.halfDepth - playerRadius && z <= wall.z + wall.halfDepth + playerRadius) {
-      return true;
-    }
   }
   return false;
 }
@@ -743,10 +733,6 @@ function createCafe() {
   wall(22, 5, 0.4, 0, 2.5, -8);
   wall(0.4, 5, 16, -11, 2.5, 0);
   wall(0.4, 5, 16, 11, 2.5, 0);
-
-  // kitchen partition with a central doorway
-  wall(7.5, 5, 0.4, -6.75, 2.5, -1);
-  wall(7.5, 5, 0.4, 6.75, 2.5, -1);
 
   // warm wainscot stripe
   const stripe = new THREE.Mesh(new THREE.BoxGeometry(22, 0.9, 0.42), mat(0x6b4231, 0.9));

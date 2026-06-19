@@ -556,7 +556,7 @@ const INGREDIENT_EMOJI = {
    permanent upgrades. Each upgrade has levels with rising costs; effect() reads
    the current level off `upgrades` and feeds the live game systems (speed, tips,
    order time, oven timer, strike forgiveness). */
-let upgrades = { speed: 0, tips: 0, ovenTimer: 0, patience: 0, forgive: 0 };
+let upgrades = { speed: 0, tips: 0, ovenTimer: 0, patience: 0, forgive: 0, multiCarry: false };
 const UPGRADE_DEFS = [
   { key: "speed",     emoji: "👟", name: "Faster Hands",     max: 3, cost: l => 30 + l * 25,
     desc: l => l === 0 ? "Move 12% faster per level." : "Chef speed +" + (l * 12) + "%." },
@@ -610,7 +610,6 @@ let cutscene = { timer: 0, mesh: null, recipe: null };
 let heldMesh = null;
 let inventory = [];
 let carryCapacity = 1;
-let upgrades = { multiCarry: false };
 
 const stationPositions = {
   pantry: new THREE.Vector3(-8.3, 0, -3.2),

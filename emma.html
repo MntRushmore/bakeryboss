@@ -282,6 +282,9 @@
       z-index: 10;
       backdrop-filter: blur(3px);
     }
+    /* The Upgrade Shop opens on top of the Day Complete screen (z-index 20),
+       so it needs to layer above it. */
+    #shop { z-index: 25; }
     .panel {
       background: linear-gradient(180deg, #fff8ec 0%, #f3e3c8 100%);
       color: #2b1a12;
@@ -651,15 +654,6 @@
   </div>
 </div>
 
-<div id="shopModal" class="modal">
-  <div class="panel">
-    <h2>🛍️ Cafe Shop</h2>
-    <p>Spend your tips to upgrade speed, expand the cafe, or add decor and tables.</p>
-    <div id="shopItems" style="display:grid;gap:10px;margin:18px 0;text-align:left;"></div>
-    <button class="danger" onclick="closeShop()">Close</button>
-  </div>
-</div>
-
 <div id="prepModal" class="modal">
   <div class="panel">
     <button id="prepClose" type="button" onclick="cancelPrep()" aria-label="Cancel prep">✕</button>
@@ -697,7 +691,7 @@
     <p>Spend your tips on permanent upgrades. They stick around forever.</p>
     <p id="shopMoney" style="font-weight:bold;color:#2a9d5c;font-size:18px;margin-top:6px;"></p>
     <div id="shopItems" style="margin:16px 0;"></div>
-    <button class="main" onclick="closeShop()">Done — Start Next Day →</button>
+    <button id="shopCloseBtn" class="main" onclick="closeShop()">Done — Start Next Day →</button>
   </div>
 </div>
 
@@ -754,11 +748,7 @@ const INGREDIENT_EMOJI = {
    permanent upgrades. Each upgrade has levels with rising costs; effect() reads
    the current level off `upgrades` and feeds the live game systems (speed, tips,
    order time, oven timer, strike forgiveness). */
-let upgrades = { speed: 0, tips: 0, ovenTimer: 0, patience: 0, forgive: 0, multiCarry: false };
-// Shop purchases tracked separately from `upgrades` (one-off buys, read by renderShopItems/buyShopItem).
-let speedUpgrade = false;
-let cafeExpanded = false;
-let decorPurchased = { pictures: 0, extraTables: 0 };
+let upgrades = { speed: 0, tips: 0, ovenTimer: 0, patience: 0, forgive: 0, extraTables: 0, multiCarry: false };
 const UPGRADE_DEFS = [
   { key: "speed",     emoji: "👟", name: "Faster Hands",     max: 3, cost: l => 30 + l * 25,
     desc: l => l === 0 ? "Move 12% faster per level." : "Chef speed +" + (l * 12) + "%." },
@@ -769,7 +759,9 @@ const UPGRADE_DEFS = [
   { key: "patience",  emoji: "🧘", name: "Patient Customers", max: 3, cost: l => 35 + l * 30,
     desc: l => l === 0 ? "Customers wait 12% longer per level." : "Order time +" + (l * 12) + "%." },
   { key: "forgive",   emoji: "❤️", name: "Forgive a Strike",  max: 2, cost: l => 50 + l * 50,
-    desc: l => l === 0 ? "Start each day with 1 fewer strike per level." : "Heal " + l + " strike(s) each morning." }
+    desc: l => l === 0 ? "Start each day with 1 fewer strike per level." : "Heal " + l + " strike(s) each morning." },
+  { key: "extraTables", emoji: "🪑", name: "Extra Table",      max: 3, cost: l => 45 + l * 40,
+    desc: l => l === 0 ? "Add a permanent seating table to the cafe." : "+" + l + " table(s) — seat more parties at once." }
 ];
 // Live multipliers/bonuses derived from upgrade levels.
 function speedMult()    { return 1 + upgrades.speed * 0.12; }
@@ -795,7 +787,7 @@ function loadGame() {
     money = s.money || 0;
     if (Array.isArray(s.unlockedIngredients)) unlockedIngredients = s.unlockedIngredients;
     if (Array.isArray(s.ingredientUnlocks)) ingredientUnlocks = s.ingredientUnlocks;
-    if (s.upgrades) upgrades = Object.assign({ speed: 0, tips: 0, ovenTimer: 0, patience: 0, forgive: 0 }, s.upgrades);
+    if (s.upgrades) upgrades = Object.assign({ speed: 0, tips: 0, ovenTimer: 0, patience: 0, forgive: 0, extraTables: 0, multiCarry: false }, s.upgrades);
     seenTutorial = !!s.seenTutorial;
     return true;
   } catch (e) { return false; }
@@ -840,7 +832,9 @@ let tableMeshes = [];
 const playerRadius = 0.45;
 
 function configureTables() {
-  const tableCount = Math.min(3 + Math.floor((day - 1) / 2), tableSpawnSpots.length);
+  // Base tables scale with the day; the Extra Table upgrade adds permanent ones
+  // on top, both capped by the number of available floor spots.
+  const tableCount = Math.min(3 + Math.floor((day - 1) / 2) + upgrades.extraTables, tableSpawnSpots.length);
   tables.length = 0;
   for (let i = 0; i < tableCount; i++) {
     tables.push({ pos: tableSpawnSpots[i].pos.clone(), occupied: false, capacity: 4, partyId: null });
@@ -1082,7 +1076,9 @@ function init() {
   player.group.position.set(0, 0, 4.5);
   scene.add(player.group);
 
-  createCustomers(4);
+  // Pool sized to the max table count (6) so the day never stalls waiting for a
+  // free party slot when several tables are occupied at once.
+  createCustomers(6);
   createKaren();
   scene.add(karen.group);
 
@@ -1482,7 +1478,6 @@ function startDay() {
   tables.forEach(t => t.occupied = false);
   resetOven();
   renderOrderList();
-  renderShopItems();
 
   player.group.position.set(0, 0, 4.5);
   player.facing = Math.PI;
@@ -1622,13 +1617,6 @@ function getSeatOffset(partySize, capacity) {
     { x: -0.9, z: -0.9 }
   ];
   return offsets[Math.min(partySize - 1, offsets.length - 1)];
-}
-
-function addTable(posX, posZ) {
-  const t = { pos: new THREE.Vector3(posX, 0, posZ), occupied: false, capacity: 4, partyId: null };
-  tables.push(t);
-  spawnTable(t);
-  updateObstacleColliders();
 }
 
 function resetOven() {
@@ -1863,6 +1851,7 @@ function finishPrep() {
   updateHeldMesh();
   message = currentOrder.recipe.needsOven ? "Prepped! Pop it in the oven 🔥" : "Drink's ready! Serve it to the table 🍽️";
   state = "playing";
+  tutorialAdvance("prep");
 }
 
 function useOven() {
@@ -2014,18 +2003,33 @@ function nextDay() {
   startDay();
 }
 
-/* ---------- Upgrade shop ---------- */
+/* ---------- Upgrade shop ----------
+   The shop opens in two contexts:
+   1. From the Day Complete screen (state === "dayclear") — closing it should
+      roll into the next day, matching the "Done — Start Next Day →" button.
+   2. From the top-bar Shop button mid-shift — closing it just returns to play
+      so the player doesn't lose their current day. */
+let shopFromDayClear = false;
 function openShop() {
+  // Only openable from active play or the Day Complete screen — never on top of
+  // the pantry/prep minigames, a cutscene, or the game-over screen.
+  if (state !== "playing" && state !== "dayclear") return;
+  shopFromDayClear = (state === "dayclear");
+  // Opening mid-shift pauses the day (timers/movement only run while "playing")
+  // so orders don't tick down and stray E presses don't fire behind the modal.
+  if (state === "playing") state = "shop";
   document.getElementById("shop").style.display = "flex";
   renderShop();
 }
 function closeShop() {
   document.getElementById("shop").style.display = "none";
-  // closing the shop advances to the next day, just like the day-clear button
-  nextDay();
+  if (shopFromDayClear) { nextDay(); return; } // between-days: advance to the next day
+  if (state === "shop") state = "playing";      // mid-shift: resume the day where it left off
 }
 function renderShop() {
   document.getElementById("shopMoney").textContent = "💰 Tips available: $" + money;
+  document.getElementById("shopCloseBtn").textContent =
+    shopFromDayClear ? "Done — Start Next Day →" : "Done — Back to Cafe";
   const box = document.getElementById("shopItems");
   box.innerHTML = "";
   UPGRADE_DEFS.forEach(def => {
@@ -2064,8 +2068,22 @@ function buyUpgrade(key) {
   if (money < cost) return;
   money -= cost;
   upgrades[key]++;
+  // Extra Table is a layout change — if bought mid-shift, drop the new table in
+  // now without disturbing parties already seated at the existing tables.
+  if (key === "extraTables") addExtraTable();
   saveGame();
   renderShop();
+}
+
+// Append one more table at the next free spawn spot (used when the Extra Table
+// upgrade is bought mid-day). configureTables() recreates the full set each new
+// day, so this only needs to handle the live add.
+function addExtraTable() {
+  if (tables.length >= tableSpawnSpots.length) return;
+  const spot = tableSpawnSpots[tables.length];
+  tables.push({ pos: spot.pos.clone(), occupied: false, capacity: 4, partyId: null });
+  createTables();             // rebuild meshes to include the new table
+  rebuildObstacleColliders(); // and its collider so the chef can't walk through it
 }
 
 /* ---------- Karen cutscene ---------- */
@@ -2159,105 +2177,18 @@ function restartGame() {
 function newGame() {
   if (!confirm("Erase all progress and start a brand-new save?")) return;
   day = 1; money = 0;
-  upgrades = { speed: 0, tips: 0, ovenTimer: 0, patience: 0, forgive: 0 };
+  upgrades = { speed: 0, tips: 0, ovenTimer: 0, patience: 0, forgive: 0, extraTables: 0, multiCarry: false };
   unlockedIngredients = ["Coffee Beans", "Bread"];
   ingredientUnlocks = ["Milk", "Cheese", "Flour", "Sugar", "Butter", "Chocolate Chips"];
-  upgrades = { multiCarry: false };
+  document.getElementById("intro").style.display = "none";
   document.getElementById("gameOver").style.display = "none";
   document.getElementById("dayClear").style.display = "none";
+  saveGame();
   startDay();
 }
 
 function hideMenus() {
-  ["pantryModal", "prepModal", "shopModal", "gameOver", "dayClear"].forEach(id => document.getElementById(id).style.display = "none");
-}
-
-function openShop() {
-  renderShopItems();
-  document.getElementById("shopModal").style.display = "flex";
-}
-
-function closeShop() {
-  document.getElementById("shopModal").style.display = "none";
-}
-
-function renderShopItems() {
-  const box = document.getElementById("shopItems");
-  if (!box) return;
-  const items = [
-    { id: "speed", title: "Walk Speed Upgrade", desc: "+1.4 movement speed", cost: 15, bought: speedUpgrade },
-    { id: "expand", title: "Cafe Expansion", desc: "Add two extra tables and more room", cost: 30, bought: cafeExpanded },
-    { id: "picture", title: "Wall Picture", desc: "Decor that'll brighten the cafe", cost: 8, bought: false, count: decorPurchased.pictures },
-    { id: "extraTable", title: "Extra Table", desc: "Add one more seating table", cost: 20, bought: false, count: decorPurchased.extraTables }
-  ];
-  box.innerHTML = items.map(item => {
-    const canAfford = money >= item.cost;
-    const label = item.id === "picture" ? `${item.title} (${item.count})` : item.id === "extraTable" ? `${item.title} (${item.count})` : item.title;
-    const status = item.bought ? "Purchased" : `${item.cost} tips`;
-    return `<div style='padding:10px; border-radius:14px; background:rgba(255,255,255,0.08); display:flex; justify-content:space-between; align-items:center;'>
-      <div style='max-width:65%;'><strong>${label}</strong><div style='opacity:.8;font-size:13px;margin-top:4px;'>${item.desc}</div></div>
-      <button class='main' style='font-size:13px; padding:8px 10px;' onclick='buyShopItem("${item.id}")' ${item.bought || !canAfford ? "disabled" : ""}>${item.bought ? status : "Buy"}</button>
-    </div>`;
-  }).join("");
-}
-
-function buyShopItem(id) {
-  const prices = { speed: 15, expand: 30, picture: 8, extraTable: 20 };
-  const cost = prices[id] || 0;
-  if (money < cost) { message = "Not enough tips for that purchase."; return; }
-
-  if (id === "speed") {
-    if (speedUpgrade) { message = "Walk speed is already upgraded."; return; }
-    speedUpgrade = true;
-    player.speed += 1.4;
-    money -= cost;
-    message = "Speed upgrade purchased! You're quicker around the cafe.";
-  }
-
-  if (id === "expand") {
-    if (cafeExpanded) { message = "Cafe expansion is already complete."; return; }
-    cafeExpanded = true;
-    money -= cost;
-    tables.forEach(t => t.capacity = Math.min(5, t.capacity + 1));
-    addTable(-6.2, 0.4);
-    addTable(-2.2, -4.0);
-    message = "Cafe expanded! More tables and bigger parties can fit now.";
-  }
-
-  if (id === "picture") {
-    decorPurchased.pictures++;
-    money -= cost;
-    createPicture(decorPurchased.pictures);
-    message = "Nice! The cafe feels cozier already.";
-  }
-
-  if (id === "extraTable") {
-    decorPurchased.extraTables++;
-    money -= cost;
-    const positions = [
-      { x: -4.2, z: 4.4 },
-      { x: 0.8, z: -4.3 },
-      { x: 2.8, z: -5.0 }
-    ];
-    const pos = positions[Math.min(decorPurchased.extraTables - 1, positions.length - 1)];
-    if (pos) addTable(pos.x, pos.z);
-    message = "Added a new table for more guests.";
-  }
-
-  renderShopItems();
-  renderOrderList();
-}
-
-function createPicture(index) {
-  const x = -9.8 + ((index - 1) % 3) * 2.8;
-  const y = 2.3;
-  const z = -1.5 + Math.floor((index - 1) / 3) * 2.5;
-  const frame = box(1.0, 0.12, 0.1, 0x8b5e3c);
-  frame.position.set(x, y, z);
-  const painting = box(0.8, 0.02, 0.08, 0xf4d35e);
-  painting.position.set(x, y, z - 0.06);
-  scene.add(frame);
-  scene.add(painting);
+  ["pantryModal", "prepModal", "shop", "gameOver", "dayClear"].forEach(id => document.getElementById(id).style.display = "none");
 }
 
 /* ---------- Held item (on a tray you can see) ---------- */

@@ -517,6 +517,8 @@
    =================================================================== */
 
 let scene, camera, renderer;
+let customers = []; // all customer parties in the cafe
+let orders = [];    // active orders awaiting completion
 let clock;
 
 const keys = {};
@@ -557,6 +559,10 @@ const INGREDIENT_EMOJI = {
    the current level off `upgrades` and feeds the live game systems (speed, tips,
    order time, oven timer, strike forgiveness). */
 let upgrades = { speed: 0, tips: 0, ovenTimer: 0, patience: 0, forgive: 0, multiCarry: false };
+// Shop purchases tracked separately from `upgrades` (one-off buys, read by renderShopItems/buyShopItem).
+let speedUpgrade = false;
+let cafeExpanded = false;
+let decorPurchased = { pictures: 0, extraTables: 0 };
 const UPGRADE_DEFS = [
   { key: "speed",     emoji: "👟", name: "Faster Hands",     max: 3, cost: l => 30 + l * 25,
     desc: l => l === 0 ? "Move 12% faster per level." : "Chef speed +" + (l * 12) + "%." },
@@ -2368,11 +2374,22 @@ function updateHUD() {
 }
 
 /* ---------- Render loop ---------- */
+let loopErrorShown = false;
 function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(0.04, clock.getDelta());
-  update(dt);
-  renderer.render(scene, camera);
+  try {
+    update(dt);
+    renderer.render(scene, camera);
+  } catch (err) {
+    // A throw inside the loop would otherwise freeze the game silently
+    // (scene stays on screen, input does nothing). Surface it once.
+    if (!loopErrorShown) {
+      loopErrorShown = true;
+      console.error("Game loop error:", err);
+      showFatalError(err);
+    }
+  }
 }
 
 function onResize() {

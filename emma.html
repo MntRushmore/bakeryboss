@@ -2,7 +2,10 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>3D Cafe Rush — Karen's Bakery</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -14,9 +17,17 @@
       font-family: "Trebuchet MS", "Segoe UI", Arial, sans-serif;
       color: #fff5e6;
       user-select: none;
+      -webkit-user-select: none;
+      /* stop iOS Safari double-tap-to-zoom, long-press callouts and tap flash */
+      touch-action: manipulation;
+      -webkit-touch-callout: none;
+      -webkit-tap-highlight-color: transparent;
+      overscroll-behavior: none;
     }
 
-    canvas { display: block; }
+    canvas { display: block; touch-action: none; }
+    /* buttons should react instantly to taps, not wait for the 300ms click */
+    button { touch-action: manipulation; }
 
     /* ---------- HUD ---------- */
     #topBar {
@@ -378,6 +389,174 @@
     }
     .loading .spin { font-size: 54px; animation: spin 1.4s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ====================================================================
+       TOUCH CONTROLS — virtual joystick + interact button.
+       Hidden by default; revealed by adding `touch` to <body> on touch
+       devices, and only visible while actually playing.
+       ==================================================================== */
+    .touchOnly { display: none; }
+    body.touch .desktopOnly { display: none; }
+    body.touch .touchOnly { display: inline; }
+
+    #touchControls { display: none; }
+    body.touch.playing #touchControls { display: block; }
+
+    #joystick {
+      position: fixed;
+      left: calc(22px + env(safe-area-inset-left));
+      bottom: calc(26px + env(safe-area-inset-bottom));
+      width: 132px; height: 132px;
+      border-radius: 50%;
+      background: rgba(28, 18, 12, 0.42);
+      border: 2px solid rgba(255, 210, 150, 0.35);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4), inset 0 0 30px rgba(0,0,0,0.35);
+      z-index: 7;
+      touch-action: none;
+      backdrop-filter: blur(3px);
+    }
+    #joyStick {
+      position: absolute;
+      left: 50%; top: 50%;
+      width: 58px; height: 58px;
+      margin: -29px 0 0 -29px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 30%, #ffe29a, #ff9f45);
+      border: 2px solid rgba(255,255,255,0.5);
+      box-shadow: 0 6px 16px rgba(0,0,0,0.5);
+      transition: transform 0.05s linear;
+      pointer-events: none;
+    }
+
+    #interactBtn {
+      position: fixed;
+      right: calc(22px + env(safe-area-inset-right));
+      bottom: calc(40px + env(safe-area-inset-bottom));
+      width: 116px; height: 116px;
+      border-radius: 50%;
+      margin: 0;
+      background: radial-gradient(circle at 35% 30%, #6fe0a8, #2fa873);
+      color: #073022;
+      border: 3px solid rgba(255,255,255,0.55);
+      font-size: 18px; font-weight: 900;
+      letter-spacing: 0.5px;
+      box-shadow: 0 10px 24px rgba(0,0,0,0.45);
+      z-index: 7;
+      touch-action: manipulation;
+    }
+    #interactBtn:active { transform: scale(0.93); box-shadow: 0 4px 12px rgba(0,0,0,0.45); }
+    /* brighten the button when there's something nearby to interact with */
+    #interactBtn.ready {
+      background: radial-gradient(circle at 35% 30%, #ffe29a, #ffb347);
+      color: #4a2c0a;
+      animation: interactPulse 1.1s ease-in-out infinite;
+    }
+    @keyframes interactPulse {
+      0%, 100% { box-shadow: 0 10px 24px rgba(0,0,0,0.45), 0 0 0 0 rgba(255,179,71,0.55); }
+      50%      { box-shadow: 0 10px 24px rgba(0,0,0,0.45), 0 0 0 12px rgba(255,179,71,0); }
+    }
+
+    /* on-screen stir buttons for the mixing minigame (touch) */
+    #mixButtons { display: none; gap: 18px; justify-content: center; margin: 12px 0 4px; }
+    body.touch #mixButtons { display: flex; }
+    #mixButtons button { width: 96px; font-size: 28px; padding: 14px 0; }
+
+    /* ✕ to cancel a prep minigame (needed on touch — there's no Esc key) */
+    #prepModal .panel { position: relative; }
+    #prepClose {
+      position: absolute; top: 8px; right: 8px;
+      width: 38px; height: 38px; padding: 0; margin: 0;
+      border-radius: 50%;
+      font-size: 18px; line-height: 1;
+      background: rgba(0,0,0,0.08); color: #6b4a33;
+      box-shadow: none;
+    }
+    #prepClose:active { transform: scale(0.92); }
+
+    /* ====================================================================
+       RESPONSIVE / PHONE LAYOUT
+       ==================================================================== */
+    @media (max-width: 760px), (pointer: coarse) {
+      /* Status pills + Shop stay on ONE centered row so the bar never wraps
+         and pushes the HUD down onto the order ticket. (The bar uses a CSS
+         transform, so a fixed-position child would anchor to the bar, not the
+         viewport — keep Shop inline instead.) */
+      #topBar {
+        top: calc(10px + env(safe-area-inset-top));
+        gap: 5px;
+        max-width: none;
+        flex-wrap: nowrap;
+        justify-content: center;
+        align-items: center;
+      }
+      .pill { padding: 4px 8px; min-width: 0; border-radius: 10px; }
+      .pill .label { font-size: 8px; letter-spacing: 0.3px; }
+      .pill .value { font-size: 15px; }
+      #shopButton { margin-left: 4px; padding: 7px 11px; font-size: 13px; }
+
+      #backLink {
+        top: calc(10px + env(safe-area-inset-top));
+        left: calc(10px + env(safe-area-inset-left));
+        font-size: 12px; padding: 6px 10px;
+      }
+
+      /* Order ticket: smaller, anchored top-right below the Shop button */
+      #orderBox {
+        top: calc(56px + env(safe-area-inset-top));
+        right: calc(8px + env(safe-area-inset-right));
+        width: min(58vw, 230px);
+        padding: 10px 11px 11px;
+      }
+      #orderName { font-size: 17px; }
+      #orderBox::before { font-size: 10px; }
+
+      /* Rage meter: compact, top-left below the back button (clear of pills) */
+      #rageBox {
+        top: calc(52px + env(safe-area-inset-top));
+        left: calc(8px + env(safe-area-inset-left));
+        bottom: auto;
+        width: min(42vw, 180px);
+        padding: 8px 10px;
+      }
+      #rageBox b { font-size: 12px; }
+      #rageOuter { height: 13px; }
+      #rageText { font-size: 11px; }
+      #rageFaces { font-size: 13px; letter-spacing: 2px; }
+
+      /* the WASD/controls hint just gets in the way on a small screen */
+      #controls { display: none; }
+
+      /* keep the status message clear of the touch controls */
+      #message {
+        bottom: calc(172px + env(safe-area-inset-bottom));
+        font-size: 14px; padding: 9px 16px;
+        max-width: 90vw;
+      }
+
+      #coach { top: calc(96px + env(safe-area-inset-top)); width: 320px; }
+      #coachText { font-size: 14px; }
+
+      /* modals / panels use more of the screen and scroll if tall */
+      .panel, .bigPanel {
+        padding: 20px 18px;
+        max-height: 88vh;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+      .panel h2, .bigPanel h1 { font-size: 22px; }
+      .panel p, .bigPanel p { font-size: 14px; }
+      button { padding: 11px 15px; font-size: 15px; }
+
+      #karenSpeech { font-size: 30px; padding: 14px 22px; }
+    }
+
+    /* very small / landscape phones: tuck the joystick + button in tighter */
+    @media (max-height: 460px) {
+      #joystick { width: 104px; height: 104px; bottom: 14px; }
+      #joyStick { width: 46px; height: 46px; margin: -23px 0 0 -23px; }
+      #interactBtn { width: 92px; height: 92px; bottom: 20px; font-size: 15px; }
+      #message { bottom: calc(130px + env(safe-area-inset-bottom)); }
+    }
   </style>
 </head>
 <body>
@@ -417,9 +596,21 @@
 
 <div id="controls">
   <b>How to play</b><br>
-  <span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span> or <b>click</b> to move<br>
-  <span class="key">E</span> / <span class="key">Space</span> — interact<br>
+  <span class="desktopOnly"><span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span> or <b>click</b> to move<br>
+  <span class="key">E</span> / <span class="key">Space</span> — interact<br></span>
+  <span class="touchOnly"><b>Joystick</b> to move · <b>tap</b> the floor to walk<br>
+  <b>Interact</b> button when near someone<br></span>
   Walk onto the <b>glowing</b> station ⭐
+</div>
+
+<!-- ===== Touch controls (shown only on touch devices, only while playing) ===== -->
+<div id="touchControls">
+  <div id="joystick">
+    <div id="joyStick"></div>
+  </div>
+  <button id="interactBtn" type="button">
+    <span class="iLabel">Interact</span>
+  </button>
 </div>
 
 <div id="message">Loading…</div>
@@ -471,6 +662,7 @@
 
 <div id="prepModal" class="modal">
   <div class="panel">
+    <button id="prepClose" type="button" onclick="cancelPrep()" aria-label="Cancel prep">✕</button>
     <h2>🔪 Prep Station</h2>
     <div id="prepContent"></div>
   </div>
@@ -519,6 +711,7 @@
 let scene, camera, renderer;
 let customers = []; // all customer parties in the cafe
 let orders = [];    // active orders awaiting completion
+let nextOrderId = 1; // monotonic id source for orders
 let clock;
 
 const keys = {};
@@ -537,6 +730,9 @@ let selectedIngredients = [];
 
 // click-to-move target (null = no target)
 let moveTarget = null;
+
+// virtual joystick state (touch). x/z are screen-relative in [-1, 1].
+const joy = { active: false, x: 0, z: 0, id: null, cx: 0, cy: 0, r: 52 };
 
 const recipes = [
   { name: "Coffee",         emoji: "☕", ingredients: ["Coffee Beans"], needsOven: false, prepTask: "measuring", timeLimit: 24, tip: 4 },
@@ -647,7 +843,7 @@ function configureTables() {
   const tableCount = Math.min(3 + Math.floor((day - 1) / 2), tableSpawnSpots.length);
   tables.length = 0;
   for (let i = 0; i < tableCount; i++) {
-    tables.push({ pos: tableSpawnSpots[i].pos.clone(), occupied: false });
+    tables.push({ pos: tableSpawnSpots[i].pos.clone(), occupied: false, capacity: 4, partyId: null });
   }
   rebuildObstacleColliders();
 }
@@ -792,6 +988,12 @@ function animateWalk(ref, dt, moving, intensity = 1) {
 
 /* ---------- Boot ---------- */
 window.addEventListener("load", () => {
+  // Flag touch devices up front (independent of WebGL init) so the touch
+  // controls + hint wording are right even if rendering is slow to start.
+  if (("ontouchstart" in window) || navigator.maxTouchPoints > 0 ||
+      window.matchMedia("(pointer: coarse)").matches) {
+    document.body.classList.add("touch");
+  }
   try {
     clock = new THREE.Clock();
     const hadSave = loadGame();
@@ -1524,7 +1726,7 @@ function seatCustomer(index, guest) {
 }
 
 function openPantry() {
-  if (!customer.seated || !currentOrder) { message = "Seat a customer before grabbing ingredients."; return; }
+  if (!customer || !customer.seated || !currentOrder) { message = "Seat a customer before grabbing ingredients."; return; }
   if (inventory.length >= carryCapacity) { message = "Your hands are full!"; return; }
   selectedIngredients = [];
   state = "pantry";
@@ -1576,16 +1778,22 @@ function openPrep() {
 function showPrepScreen() {
   const c = document.getElementById("prepContent");
   const type = prepGame.type;
-  if (type === "cutting") c.innerHTML = `<p>Press <b>SPACE</b> when the marker is in the green zone. Land <b>2</b> good cuts!</p>
+  const tapWord = document.body.classList.contains("touch") ? "Tap" : "Press <b>SPACE</b> /";
+  if (type === "cutting") c.innerHTML = `<p>${tapWord} when the marker is in the green zone. Land <b>2</b> good cuts!</p>
     <div class="prepBar"><div class="greenZone"></div><div id="cutMarker" class="marker"></div></div>
-    <h3 id="prepProgress">Good cuts: 0/2</h3><p style="opacity:.6">Esc to cancel</p>`;
-  if (type === "mixing") c.innerHTML = `<p>Alternate pressing <b>A</b> and <b>D</b> to stir!</p>
-    <div class="bigEmoji" id="mixBowl">🥣</div><h3 id="prepProgress">Stirs: 0/10</h3><p style="opacity:.6">Esc to cancel</p>`;
-  if (type === "measuring") c.innerHTML = `<p>Press <b>SPACE</b> when the liquid hits the green target.</p>
-    <div class="measureCup"><div class="measureTarget"></div><div id="measureFill" class="measureFill"></div></div><p style="opacity:.6">Esc to cancel</p>`;
-  if (type === "tray") c.innerHTML = `<p>Press <b>SPACE</b> (or click) to place <b>6</b> cookies on the tray.</p>
+    <h3 id="prepProgress">Good cuts: 0/2</h3><p style="opacity:.6"><span class="touchOnly">Tap outside the bowl to cut · </span>Esc / tap ✕ to cancel</p>`;
+  if (type === "mixing") c.innerHTML = `<p><span class="desktopOnly">Alternate pressing <b>A</b> and <b>D</b> to stir!</span><span class="touchOnly">Alternate the <b>◀</b> and <b>▶</b> buttons to stir!</span></p>
+    <div class="bigEmoji" id="mixBowl">🥣</div><h3 id="prepProgress">Stirs: 0/10</h3>
+    <div id="mixButtons">
+      <button type="button" class="main" onclick="handlePrepKey('a')">◀</button>
+      <button type="button" class="main" onclick="handlePrepKey('d')">▶</button>
+    </div>
+    <p style="opacity:.6">Esc / tap ✕ to cancel</p>`;
+  if (type === "measuring") c.innerHTML = `<p>${tapWord} when the liquid hits the green target.</p>
+    <div class="measureCup"><div class="measureTarget"></div><div id="measureFill" class="measureFill"></div></div><p style="opacity:.6"><span class="touchOnly">Tap outside the cup to pour · </span>Esc / tap ✕ to cancel</p>`;
+  if (type === "tray") c.innerHTML = `<p>${tapWord} place <b>6</b> cookies on the tray.</p>
     <div class="bigEmoji" id="trayEmoji">🍪</div><h3 id="prepProgress">Cookies: 0/6</h3>
-    <button class="main" onclick="placeCookie()">Place Cookie 🍪</button><p style="opacity:.6">Esc to cancel</p>`;
+    <button class="main" onclick="placeCookie()">Place Cookie 🍪</button><p style="opacity:.6">Esc / tap ✕ to cancel</p>`;
   const modal = document.getElementById("prepModal");
   modal.style.display = "flex";
   modal.onclick = e => {
@@ -1704,6 +1912,7 @@ function beginCooking(recipe) {
 }
 
 function serveTable() {
+  if (!customer || !currentOrder) { message = "Walk up to a seated customer's table first."; return; }
   const cookedIndex = inventory.findIndex(i => i.type === "cookedFood");
   if (cookedIndex < 0) { message = "Bring the finished food to the table."; return; }
   const held = inventory[cookedIndex];
@@ -1711,18 +1920,22 @@ function serveTable() {
   if (held.recipe.name !== currentOrder.recipe.name) { failCurrentOrder("Served the wrong order."); return; }
   if (currentOrder.timeLeft <= 0) { failCurrentOrder("Served too late."); return; }
 
+  const servedOrder = currentOrder;
   inventory.splice(cookedIndex, 1);
   updateHeldMesh();
   ordersDone++;
   // tip scales with how fast you were, then the Bigger Tip Jar upgrade multiplies it
-  const speedBonus = Math.round((order.timeLeft / order.maxTime) * 4);
-  const tip = Math.round((order.recipe.tip + speedBonus) * tipMult());
+  const speedBonus = Math.round((servedOrder.timeLeft / servedOrder.maxTime) * 4);
+  const tip = Math.round((servedOrder.recipe.tip + speedBonus) * tipMult());
   money += tip; dayTips += tip;
   popup("+$" + tip, tables[customer.tableIndex].pos, "#9ae6b4");
 
   tables[customer.tableIndex].occupied = false;
-  customer.active = false; customer.following = false; customer.seated = false; customer.tableIndex = null;
+  tables[customer.tableIndex].partyId = null;
+  customer.active = false; customer.following = false; customer.seated = false; customer.tableIndex = null; customer.orderId = null;
   customer.group.visible = false;
+  removeOrder(servedOrder.id);
+  customer = null;
   currentOrder = null; clearHeldMesh();
   message = "✅ Served! Nice work, chef. +$" + tip + " tip";
   tutorialAdvance("serve");
@@ -1734,9 +1947,16 @@ function serveTable() {
 function failCurrentOrder(reason) {
   addMistake(reason);
   if (mistakes >= RAGE_LIMIT) return;
-  if (customer.active && customer.seated && customer.tableIndex !== null) tables[customer.tableIndex].occupied = false;
-  customer.active = false; customer.following = false; customer.seated = false; customer.tableIndex = null;
-  customer.group.visible = false;
+  if (customer) {
+    if (customer.active && customer.seated && customer.tableIndex !== null) {
+      tables[customer.tableIndex].occupied = false;
+      tables[customer.tableIndex].partyId = null;
+    }
+    customer.active = false; customer.following = false; customer.seated = false; customer.tableIndex = null; customer.orderId = null;
+    if (customer.group) customer.group.visible = false;
+  }
+  if (currentOrder) removeOrder(currentOrder.id);
+  customer = null;
   currentOrder = null; inventory.length = 0; clearHeldMesh(); resetOven();
   message = reason + " The customer left upset.";
 }
@@ -1853,8 +2073,14 @@ function startKarenCutscene() {
   hideMenus();
   state = "karenCutscene";
   message = "Uh oh… Karen heard about the mistakes.";
-  if (customer.group) customer.group.visible = false;
-  customer.active = false; customer.following = false; customer.seated = false; customer.tableIndex = null;
+  // Clear every party off the floor, not just the focused one.
+  customers.forEach(c => {
+    if (c.group) c.group.visible = false;
+    c.active = false; c.following = false; c.seated = false; c.tableIndex = null; c.orderId = null;
+  });
+  tables.forEach(t => { t.occupied = false; t.partyId = null; });
+  orders.length = 0;
+  customer = null; currentOrder = null;
   karen.active = true; karen.phase = "entering"; karen.timer = 0;
   karen.group.visible = true; karen.group.position.copy(entrancePos);
   document.getElementById("karenSpeech").style.display = "none";
@@ -2154,6 +2380,29 @@ function update(dt) {
   updateSteam(dt);
   updatePopups(dt);
   updateHUD();
+  updateTouchUI();
+}
+
+/* Show the on-screen controls only while playing, and pulse the Interact
+   button whenever the chef is standing next to something actionable. */
+function updateTouchUI() {
+  document.body.classList.toggle("playing", state === "playing");
+  const btn = document.getElementById("interactBtn");
+  if (!btn) return;
+  btn.classList.toggle("ready", state === "playing" && hasInteractTarget());
+}
+
+/* Mirror of interact()'s proximity checks — true if pressing Interact would
+   actually do something right now. */
+function hasInteractTarget() {
+  if (!player || !player.group) return false;
+  const pp = player.group.position;
+  if (customers.some(c => c.active && !c.following && !c.seated && pp.distanceTo(c.group.position) < 2.0)) return true;
+  if (customer && customer.active && customer.following &&
+      tables.some(t => !t.occupied && customer.partySize <= t.capacity && pp.distanceTo(t.pos) < 2.0)) return true;
+  if (nearStation("pantry") || nearStation("prep") || nearStation("oven") || nearStation("trash")) return true;
+  if (tables.some(t => t.partyId && pp.distanceTo(t.pos) < 2.0)) return true;
+  return false;
 }
 
 function updatePlayer(dt) {
@@ -2164,6 +2413,10 @@ function updatePlayer(dt) {
   if (keys["s"] || keys["arrowdown"]) mz += 1;
   if (keys["a"] || keys["arrowleft"]) mx -= 1;
   if (keys["d"] || keys["arrowright"]) mx += 1;
+
+  // virtual joystick (touch) — analog, same screen-relative axes as the keys
+  const usingJoy = joy.active && (joy.x !== 0 || joy.z !== 0);
+  if (usingJoy) { mx = joy.x; mz = joy.z; }
 
   const usingKeys = mx !== 0 || mz !== 0;
   if (usingKeys) moveTarget = null;
@@ -2444,6 +2697,85 @@ function setupInput() {
       moveTarget = _hit.clone();
     }
   });
+
+  setupTouch();
+}
+
+/* ---------- Touch controls: virtual joystick + interact button ---------- */
+function setupTouch() {
+  // Detect a touch-capable device. We flip the <body class> so the CSS reveals
+  // the on-screen controls and swaps the WASD hints for touch wording.
+  const isTouch = ("ontouchstart" in window) ||
+                  (navigator.maxTouchPoints > 0) ||
+                  window.matchMedia("(pointer: coarse)").matches;
+  if (isTouch) document.body.classList.add("touch");
+
+  const joyBase = document.getElementById("joystick");
+  const joyKnob = document.getElementById("joyStick");
+  const interactBtn = document.getElementById("interactBtn");
+  if (!joyBase || !interactBtn) return;
+
+  // ----- joystick -----
+  function joyStart(e) {
+    const t = e.changedTouches ? e.changedTouches[0] : e;
+    const rect = joyBase.getBoundingClientRect();
+    joy.active = true;
+    joy.id = t.identifier !== undefined ? t.identifier : "mouse";
+    joy.cx = rect.left + rect.width / 2;
+    joy.cy = rect.top + rect.height / 2;
+    joy.r = rect.width / 2 - 14;
+    joyMove(e);
+    e.preventDefault();
+  }
+  function joyMove(e) {
+    if (!joy.active) return;
+    let t = e;
+    if (e.changedTouches) {
+      t = [...e.changedTouches].find(c => c.identifier === joy.id);
+      if (!t) return;
+    }
+    let dx = t.clientX - joy.cx;
+    let dy = t.clientY - joy.cy;
+    const dist = Math.hypot(dx, dy) || 1;
+    const clamped = Math.min(dist, joy.r);
+    const nx = (dx / dist) * clamped;
+    const ny = (dy / dist) * clamped;
+    joyKnob.style.transform = `translate(${nx}px, ${ny}px)`;
+    // small dead zone so a resting thumb doesn't drift the chef
+    const norm = clamped / joy.r;
+    if (norm < 0.18) { joy.x = 0; joy.z = 0; }
+    // push up on screen → dy negative → mz negative → walk into the scene (matches W)
+    else { joy.x = dx / dist; joy.z = dy / dist; }
+    e.preventDefault();
+  }
+  function joyEnd(e) {
+    if (e && e.changedTouches && joy.id !== "mouse") {
+      const ended = [...e.changedTouches].some(c => c.identifier === joy.id);
+      if (!ended) return;
+    }
+    joy.active = false; joy.x = 0; joy.z = 0; joy.id = null;
+    joyKnob.style.transform = "translate(0px, 0px)";
+  }
+
+  joyBase.addEventListener("touchstart", joyStart, { passive: false });
+  window.addEventListener("touchmove", joyMove, { passive: false });
+  window.addEventListener("touchend", joyEnd);
+  window.addEventListener("touchcancel", joyEnd);
+  // mouse fallback so the joystick is testable on desktop too
+  joyBase.addEventListener("mousedown", joyStart);
+  window.addEventListener("mousemove", e => { if (joy.active) joyMove(e); });
+  window.addEventListener("mouseup", e => { if (joy.active) joyEnd(); });
+
+  // ----- interact button (the touch equivalent of E / Space) -----
+  function doInteract(e) {
+    e.preventDefault();
+    if (state === "playing") interact();
+    else if (state === "dayclear") nextDay();
+    else if (state === "intro") dismissIntro();
+    else if (state === "fired") restartGame();
+  }
+  interactBtn.addEventListener("touchstart", doInteract, { passive: false });
+  interactBtn.addEventListener("click", doInteract);
 }
 </script>
 </body>

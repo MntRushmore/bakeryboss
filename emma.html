@@ -532,15 +532,6 @@ let dayTips = 0;
 
 let message = "";
 let selectedIngredients = [];
-let holding = null;
-let currentOrder = null;
-let selectedOrderId = null;
-let orders = [];
-let customers = [];
-let nextOrderId = 1;
-let cafeExpanded = false;
-let speedUpgrade = false;
-let decorPurchased = { pictures: 0, extraTables: 0 };
 
 // click-to-move target (null = no target)
 let moveTarget = null;
@@ -617,6 +608,9 @@ let prepGame = { type: "", marker: 0, markerDir: 1, fill: 0, fillDir: 1, hits: 0
 let cutscene = { timer: 0, mesh: null, recipe: null };
 
 let heldMesh = null;
+let inventory = [];
+let carryCapacity = 1;
+let upgrades = { multiCarry: false };
 
 const stationPositions = {
   pantry: new THREE.Vector3(-8.3, 0, -3.2),
@@ -629,15 +623,38 @@ const stationLabels = {}; // name -> floating sprite
 
 const entrancePos = new THREE.Vector3(9.0, 0, 6.0);
 
-let tables = [
-  { pos: new THREE.Vector3(6.5, 0, -3.0), occupied: 0, capacity: 3, customerIds: [] },
-  { pos: new THREE.Vector3(7.0, 0, 2.2), occupied: 0, capacity: 3, customerIds: [] },
-  { pos: new THREE.Vector3(3.6, 0, 3.6), occupied: 0, capacity: 3, customerIds: [] }
+const tableSpawnSpots = [
+  { pos: new THREE.Vector3(6.5, 0, -3.0) },
+  { pos: new THREE.Vector3(7.0, 0, 2.2) },
+  { pos: new THREE.Vector3(3.6, 0, 3.6) },
+  { pos: new THREE.Vector3(5.2, 0, 0.6) },
+  { pos: new THREE.Vector3(8.1, 0, 1.8) },
+  { pos: new THREE.Vector3(4.2, 0, 5.0) }
 ];
-
+let tables = [];
 let obstacleColliders = [];
-let cafeBounds = { minX: -10, maxX: 10, minZ: -7, maxZ: 6.8 };
+let tableMeshes = [];
 const playerRadius = 0.45;
+
+function configureTables() {
+  const tableCount = Math.min(3 + Math.floor((day - 1) / 2), tableSpawnSpots.length);
+  tables.length = 0;
+  for (let i = 0; i < tableCount; i++) {
+    tables.push({ pos: tableSpawnSpots[i].pos.clone(), occupied: false });
+  }
+  rebuildObstacleColliders();
+}
+
+function rebuildObstacleColliders() {
+  obstacleColliders = [
+    { pos: stationPositions.pantry, radius: 1.3 },
+    { pos: stationPositions.prep, radius: 1.3 },
+    { pos: stationPositions.oven, radius: 1.3 },
+    { pos: stationPositions.trash, radius: 1.2 },
+    ...tables.map(t => ({ pos: t.pos, radius: 1.4 }))
+  ];
+}
+
 function isObstructed(x, z) {
   for (const obs of obstacleColliders) {
     const dx = x - obs.pos.x;
@@ -841,6 +858,7 @@ function init() {
 
   createCafe();
   createStations();
+  configureTables();
   createTables();
   createDecor();
 
@@ -1010,40 +1028,21 @@ function createTrash() {
 }
 
 function createTables() {
-  tables.forEach(t => spawnTable(t));
-  updateObstacleColliders();
-}
+  tableMeshes.forEach(mesh => scene.remove(mesh));
+  tableMeshes.length = 0;
 
-function spawnTable(t) {
-  const top = cyl(0.85, 0.18, 0x9c6b43);
-  top.position.set(t.pos.x, 0.88, t.pos.z); scene.add(top);
-  const pole = cyl(0.13, 0.88, 0x3a241b);
-  pole.position.set(t.pos.x, 0.42, t.pos.z); scene.add(pole);
-  const seatOffsets = [
-    { x: 0, z: 1.15 },
-    { x: 1.25, z: 0 },
-    { x: -1.25, z: 0 },
-    { x: 0.9, z: -0.9 },
-    { x: -0.9, z: -0.9 }
-  ];
-  const seats = Math.min(t.capacity, 5);
-  for (let i = 0; i < seats; i++) {
-    const o = seatOffsets[i];
-    const seat = cyl(0.32, 0.16, 0x6e3b26);
-    seat.position.set(t.pos.x + o.x, 0.46, t.pos.z + o.z); scene.add(seat);
-    const sp = cyl(0.08, 0.46, 0x4e2f1f);
-    sp.position.set(t.pos.x + o.x, 0.23, t.pos.z + o.z); scene.add(sp);
-  }
-}
-
-function updateObstacleColliders() {
-  obstacleColliders = [
-    { pos: stationPositions.pantry, radius: 1.3 },
-    { pos: stationPositions.prep, radius: 1.3 },
-    { pos: stationPositions.oven, radius: 1.3 },
-    { pos: stationPositions.trash, radius: 1.2 },
-    ...tables.map(t => ({ pos: t.pos, radius: 1.4 }))
-  ];
+  tables.forEach(t => {
+    const top = cyl(0.85, 0.18, 0x9c6b43);
+    top.position.set(t.pos.x, 0.88, t.pos.z); scene.add(top); tableMeshes.push(top);
+    const pole = cyl(0.13, 0.88, 0x3a241b);
+    pole.position.set(t.pos.x, 0.42, t.pos.z); scene.add(pole); tableMeshes.push(pole);
+    for (const o of [[1.25, 0], [-1.25, 0], [0, 1.25]]) {
+      const seat = cyl(0.32, 0.16, 0x6e3b26);
+      seat.position.set(t.pos.x + o[0], 0.46, t.pos.z + o[1]); scene.add(seat); tableMeshes.push(seat);
+      const sp = cyl(0.08, 0.46, 0x4e2f1f);
+      sp.position.set(t.pos.x + o[0], 0.23, t.pos.z + o[1]); scene.add(sp); tableMeshes.push(sp);
+    }
+  });
 }
 
 function createDecor() {
@@ -1256,16 +1255,15 @@ function startDay() {
   ordersNeeded = Math.min(3 + Math.floor(day / 2), 8);
 
   currentOrder = null;
-  selectedOrderId = null;
-  holding = null;
+  inventory.length = 0;
+  carryCapacity = upgrades.multiCarry ? 2 : 1;
   selectedIngredients = [];
   moveTarget = null;
   clearHeldMesh();
 
-  tables.forEach(t => { t.occupied = false; t.partyId = null; });
-  updateObstacleColliders();
-  orders = [];
-  nextOrderId = 1;
+  configureTables();
+  createTables();
+  tables.forEach(t => t.occupied = false);
   resetOven();
   renderOrderList();
   renderShopItems();
@@ -1296,21 +1294,20 @@ function startDay() {
   updateRageMeter();
 }
 
-function spawnCustomer() {
-  const party = customers.find(c => !c.active && !c.seated);
-  if (!party) return;
-  reskinCustomer(party);
-  party.active = true;
-  party.following = false;
-  party.seated = false;
-  party.tableIndex = null;
-  party.orderId = null;
-  party.group.position.copy(entrancePos);
-  party.group.visible = true;
-  party.group.rotation.y = Math.PI;
-  party.partySize = 1 + Math.floor(Math.random() * 3);
-  customer = party;
-  message = "A customer party arrived! Walk over and press E.";
+function newCustomer() {
+  customer.active = true;
+  customer.following = false;
+  customer.seated = false;
+  customer.tableIndex = null;
+
+  reskinCustomer();                 // build a fresh, distinct 3D patron
+  customer.group.position.copy(entrancePos);
+  customer.group.visible = true;
+  customer.group.rotation.y = Math.PI; // face into the cafe
+
+  currentOrder = null;
+  clearHeldMesh();
+  message = "A customer arrived at the door! Walk over and press E.";
 }
 
 function createOrder(partyId) {
@@ -1506,10 +1503,8 @@ function seatCustomer(index, guest) {
 }
 
 function openPantry() {
-  if (!customer || !customer.seated) { message = "Seat a customer before grabbing ingredients."; return; }
-  currentOrder = getOrderById(customer.orderId) || currentOrder;
-  if (!currentOrder) { message = "No order selected for this table."; return; }
-  if (holding) { message = "Your hands are full!"; return; }
+  if (!customer.seated || !currentOrder) { message = "Seat a customer before grabbing ingredients."; return; }
+  if (inventory.length >= carryCapacity) { message = "Your hands are full!"; return; }
   selectedIngredients = [];
   state = "pantry";
   document.getElementById("neededText").textContent = "Needed: " + currentOrder.recipe.ingredients.join(", ");
@@ -1541,18 +1536,17 @@ function finishPantry() {
   const chosen = [...selectedIngredients].sort();
   const ok = needed.length === chosen.length && needed.every((x, i) => x === chosen[i]);
   if (!ok) { addMistake("Wrong ingredients."); closePantry(); return; }
-  holding = { type: "ingredients", recipe: currentOrder.recipe, burned: false };
+  inventory.push({ type: "ingredients", recipe: currentOrder.recipe, burned: false });
   currentOrder.gotIngredients = true;
-  createHeldMesh("ingredients");
+  updateHeldMesh();
   closePantry();
   message = "Got it! Now hit the prep station 🔪";
   tutorialAdvance("pantry");
 }
 
 function openPrep() {
-  if (!customer || !customer.seated) { message = "Seat a customer before prepping."; return; }
-  currentOrder = getOrderById(customer.orderId) || currentOrder;
-  if (!holding || holding.type !== "ingredients") { message = "Grab the right ingredients from the pantry first."; return; }
+  const heldIngredients = inventory.find(i => i.type === "ingredients");
+  if (!heldIngredients) { message = "Grab the right ingredients from the pantry first."; return; }
   state = "prep";
   prepGame = { type: currentOrder.recipe.prepTask, marker: 0, markerDir: 1, fill: 0, fillDir: 1, hits: 0, mixCount: 0, lastMixKey: "", placed: 0 };
   showPrepScreen();
@@ -1633,29 +1627,28 @@ function finishPrep() {
   if (!currentOrder) { message = "No order to finish prepping."; state = "playing"; return; }
   currentOrder.prepped = true;
   popup("👌", player.group.position, "#ffd166");
-  tutorialAdvance("prep");
-  if (currentOrder.recipe.needsOven) {
-    holding = { type: "rawFood", recipe: currentOrder.recipe, burned: false };
-    createHeldMesh("rawFood");
-    message = "Prepped! Pop it in the oven 🔥";
-  } else {
-    holding = { type: "cookedFood", recipe: currentOrder.recipe, burned: false };
-    createHeldMesh("cookedFood");
-    message = "Drink's ready! Serve it to the table 🍽️";
-  }
+  const ingredientIndex = inventory.findIndex(i => i.type === "ingredients" && i.recipe === currentOrder.recipe);
+  if (ingredientIndex >= 0) inventory.splice(ingredientIndex, 1);
+  const itemType = currentOrder.recipe.needsOven ? "rawFood" : "cookedFood";
+  inventory.push({ type: itemType, recipe: currentOrder.recipe, burned: false });
+  updateHeldMesh();
+  message = currentOrder.recipe.needsOven ? "Prepped! Pop it in the oven 🔥" : "Drink's ready! Serve it to the table 🍽️";
   state = "playing";
 }
 
 function useOven() {
-  if (holding && holding.type === "rawFood") {
+  const rawIndex = inventory.findIndex(i => i.type === "rawFood");
+  if (rawIndex >= 0) {
     if (oven.item) { message = "The oven is already full!"; return; }
-    startOvenCutscene(holding.recipe);
-    holding = null; clearHeldMesh();
+    const rawItem = inventory.splice(rawIndex, 1)[0];
+    startOvenCutscene(rawItem.recipe);
+    updateHeldMesh();
     return;
   }
-  if (!holding && oven.item && (oven.ready || oven.burned)) {
-    holding = { type: "cookedFood", recipe: oven.item, burned: oven.burned };
-    createHeldMesh("cookedFood");
+  if (oven.item && (oven.ready || oven.burned)) {
+    if (inventory.length >= carryCapacity) { message = "Your hands are full!"; return; }
+    inventory.push({ type: "cookedFood", recipe: oven.item, burned: oven.burned });
+    updateHeldMesh();
     message = oven.burned ? "Yuck — that's burned. Trash it!" : "Fresh out the oven! Serve it 🍽️";
     if (oven.foodMesh) { scene.remove(oven.foodMesh); oven.foodMesh = null; }
     if (oven.glow) oven.glow.material.emissive.setHex(0x000000);
@@ -1690,16 +1683,15 @@ function beginCooking(recipe) {
 }
 
 function serveTable() {
-  if (!holding) { message = "Bring the finished food to the table."; return; }
-  if (!customer || customer.tableIndex === null) { message = "Choose a seated customer first."; return; }
-  const party = getPartyById(customer.id);
-  const order = party ? getOrderById(party.orderId) : null;
-  if (!order) { message = "No order is assigned to this table."; return; }
-  if (holding.type !== "cookedFood") { failOrder(order.id, "Served before it was ready."); return; }
-  if (holding.burned) { failOrder(order.id, "Served burned food."); return; }
-  if (holding.recipe.name !== order.recipe.name) { failOrder(order.id, "Served the wrong order."); return; }
-  if (order.timeLeft <= 0) { failOrder(order.id, "Served too late."); return; }
+  const cookedIndex = inventory.findIndex(i => i.type === "cookedFood");
+  if (cookedIndex < 0) { message = "Bring the finished food to the table."; return; }
+  const held = inventory[cookedIndex];
+  if (held.burned) { failCurrentOrder("Served burned food."); return; }
+  if (held.recipe.name !== currentOrder.recipe.name) { failCurrentOrder("Served the wrong order."); return; }
+  if (currentOrder.timeLeft <= 0) { failCurrentOrder("Served too late."); return; }
 
+  inventory.splice(cookedIndex, 1);
+  updateHeldMesh();
   ordersDone++;
   // tip scales with how fast you were, then the Bigger Tip Jar upgrade multiplies it
   const speedBonus = Math.round((order.timeLeft / order.maxTime) * 4);
@@ -1710,8 +1702,7 @@ function serveTable() {
   tables[customer.tableIndex].occupied = false;
   customer.active = false; customer.following = false; customer.seated = false; customer.tableIndex = null;
   customer.group.visible = false;
-  removeOrder(order.id);
-  holding = null; clearHeldMesh();
+  currentOrder = null; clearHeldMesh();
   message = "✅ Served! Nice work, chef. +$" + tip + " tip";
   tutorialAdvance("serve");
 
@@ -1720,21 +1711,26 @@ function serveTable() {
 }
 
 function failCurrentOrder(reason) {
-  if (!currentOrder) {
-    message = reason;
-    return;
-  }
-  failOrder(currentOrder.id, reason);
-  holding = null; clearHeldMesh(); resetOven();
+  addMistake(reason);
+  if (mistakes >= RAGE_LIMIT) return;
+  if (customer.active && customer.seated && customer.tableIndex !== null) tables[customer.tableIndex].occupied = false;
+  customer.active = false; customer.following = false; customer.seated = false; customer.tableIndex = null;
+  customer.group.visible = false;
+  currentOrder = null; inventory.length = 0; clearHeldMesh(); resetOven();
   message = reason + " The customer left upset.";
 }
 
 function useTrash() {
-  if (!holding) { message = "Nothing to throw away."; return; }
-  const wasBurned = holding.type === "cookedFood" && holding.burned;
-  holding = null; clearHeldMesh();
-  if (wasBurned) {
-    // trashing burned food is the right call — no extra penalty
+  if (inventory.length === 0) { message = "Nothing to throw away."; return; }
+  const burnedIndex = inventory.findIndex(i => i.type === "cookedFood" && i.burned);
+  let removed;
+  if (burnedIndex >= 0) {
+    removed = inventory.splice(burnedIndex, 1)[0];
+  } else {
+    removed = inventory.pop();
+  }
+  updateHeldMesh();
+  if (removed.type === "cookedFood" && removed.burned) {
     message = "Tossed the burnt one. Remake it!";
     popup("🗑️", stationPositions.trash, "#ffd166");
   } else {
@@ -1748,13 +1744,22 @@ function completeDay() {
   const realMistakes = Math.max(0, mistakes);
   const stars = realMistakes === 0 ? 3 : realMistakes <= 2 ? 2 : 1;
   document.getElementById("dayStars").textContent = "⭐".repeat(stars) + "☆".repeat(3 - stars);
+
+  const unlockMessages = [];
   if (ingredientUnlocks.length > 0) {
     const item = ingredientUnlocks.shift();
     unlockedIngredients.push(item);
-    document.getElementById("unlockText").innerHTML = "You unlocked a new ingredient: <b>" + (INGREDIENT_EMOJI[item] || "") + " " + item + "</b>!";
-  } else {
-    document.getElementById("unlockText").textContent = "Everything is unlocked — you're a true bakery boss!";
+    unlockMessages.push("You unlocked a new ingredient: <b>" + (INGREDIENT_EMOJI[item] || "") + " " + item + "</b>!");
   }
+  if (!upgrades.multiCarry && day >= 2) {
+    upgrades.multiCarry = true;
+    carryCapacity = 2;
+    unlockMessages.push("You unlocked a carry upgrade: hold two items at once!");
+  }
+  if (unlockMessages.length === 0) {
+    unlockMessages.push("Everything is unlocked — you're a true bakery boss!");
+  }
+  document.getElementById("unlockText").innerHTML = unlockMessages.join(" ");
   document.getElementById("tipText").textContent = "💰 Tips earned today: $" + dayTips + "   (Total: $" + money + ")";
   document.getElementById("dayClear").style.display = "flex";
   saveGame();
@@ -1910,8 +1915,9 @@ function newGame() {
   upgrades = { speed: 0, tips: 0, ovenTimer: 0, patience: 0, forgive: 0 };
   unlockedIngredients = ["Coffee Beans", "Bread"];
   ingredientUnlocks = ["Milk", "Cheese", "Flour", "Sugar", "Butter", "Chocolate Chips"];
-  try { localStorage.removeItem(SAVE_KEY); } catch (e) {}
-  hideMenus();
+  upgrades = { multiCarry: false };
+  document.getElementById("gameOver").style.display = "none";
+  document.getElementById("dayClear").style.display = "none";
   startDay();
 }
 
@@ -2008,8 +2014,10 @@ function createPicture(index) {
 }
 
 /* ---------- Held item (on a tray you can see) ---------- */
-function createHeldMesh(type) {
+function updateHeldMesh() {
   clearHeldMesh();
+  if (inventory.length === 0) return;
+
   const g = new THREE.Group();
   // tray
   const tray = box(0.7, 0.05, 0.5, 0xb5895a);
@@ -2069,8 +2077,9 @@ function createHeldMesh(type) {
     }
   }
 
-  if (type === "ingredients") {
-    const ingredients = holding && holding.recipe ? holding.recipe.ingredients : [];
+  const held = inventory[0];
+  if (held.type === "ingredients") {
+    const ingredients = held.recipe.ingredients || [];
     if (ingredients.length === 1) {
       const food = makeIngredientMesh(ingredients[0]);
       food.position.set(0, 0.2, 0);
@@ -2083,12 +2092,12 @@ function createHeldMesh(type) {
         g.add(mesh);
       });
     }
-  } else if (type === "rawFood") {
+  } else if (held.type === "rawFood") {
     const food = box(0.55, 0.14, 0.4, 0xe9c46a);
     food.position.y = 0.2;
     g.add(food);
   } else {
-    const food = box(0.55, 0.16, 0.4, holding && holding.burned ? 0x1a1a1a : 0xd9a441);
+    const food = box(0.55, 0.16, 0.4, held.burned ? 0x1a1a1a : 0xd9a441);
     food.position.y = 0.2;
     g.add(food);
   }
@@ -2308,7 +2317,10 @@ function updateHUD() {
     const steps = [];
     steps.push(["Ingredients", currentOrder.gotIngredients]);
     steps.push(["Prep", currentOrder.prepped]);
-    if (currentOrder.recipe.needsOven) steps.push(["Bake", oven.ready || oven.burned || (holding && holding.type === "cookedFood")]);
+    if (currentOrder.recipe.needsOven) {
+      const hasCooked = inventory.some(i => i.type === "cookedFood" && i.recipe === currentOrder.recipe);
+      steps.push(["Bake", oven.ready || oven.burned || hasCooked]);
+    }
     steps.push(["Serve", false]);
     document.getElementById("orderSteps").innerHTML = steps.map(s =>
       `<div class="step ${s[1] ? "done" : "todo"}">${s[0]}</div>`).join("");

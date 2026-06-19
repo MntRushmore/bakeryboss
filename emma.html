@@ -1308,19 +1308,26 @@ function startDay() {
   updateRageMeter();
 }
 
-function newCustomer() {
-  customer.active = true;
-  customer.following = false;
-  customer.seated = false;
-  customer.tableIndex = null;
+function spawnCustomer() {
+  // Pick an idle party from the pool; if everyone's busy, there's no one to send in.
+  const guest = customers.find(c => !c.active);
+  if (!guest) return;
 
-  reskinCustomer();                 // build a fresh, distinct 3D patron
-  customer.group.position.copy(entrancePos);
-  customer.group.visible = true;
-  customer.group.rotation.y = Math.PI; // face into the cafe
+  guest.active = true;
+  guest.following = false;
+  guest.seated = false;
+  guest.tableIndex = null;
+  guest.orderId = null;
+  guest.partySize = 1 + Math.floor(Math.random() * 3);
 
-  currentOrder = null;
-  clearHeldMesh();
+  reskinCustomer(guest);            // build a fresh, distinct 3D patron
+  // Offset each arrival a little so simultaneous spawns don't stack on one spot.
+  const queuePos = customers.filter(c => c.active && !c.seated && !c.following).length - 1;
+  guest.group.position.copy(entrancePos);
+  guest.group.position.x -= queuePos * 1.2;
+  guest.group.visible = true;
+  guest.group.rotation.y = Math.PI; // face into the cafe
+
   message = "A customer arrived at the door! Walk over and press E.";
 }
 

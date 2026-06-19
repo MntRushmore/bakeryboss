@@ -602,6 +602,8 @@ let seenTutorial = false;
 
 let player = { group: null, ref: null, speed: 5.6, facing: Math.PI };
 let customer = null; // currently focused/selected party
+let currentOrder = null; // the order being worked on right now
+let selectedOrderId = null; // id of the order highlighted in the order list
 let karen = { group: null, ref: null, active: false, phase: "hidden", timer: 0 };
 let oven = { item: null, cooking: false, ready: false, burned: false, cookTimer: 0, burnTimer: 0, burnMistakeCounted: false, foodMesh: null, glow: null };
 let prepGame = { type: "", marker: 0, markerDir: 1, fill: 0, fillDir: 1, hits: 0, mixCount: 0, lastMixKey: "", placed: 0 };
